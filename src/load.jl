@@ -6,9 +6,12 @@ input = []  # Array{RGB{Float32},2}
 patternToId = Dict()
 idToPattern = Dict()
 patternCount = Dict()  # patternId => Int
-patternAdjacency = Set()  # Set([(direction, patternId1, patternId2), ...])
+patternAdjacency = Dict()  # direction => pattern1 => Set([patterns...])
+patternsAllowed = Dict()  # direction => [width x height x patterns]
+#  pattern i at (x, y) overlaps with patterns from the field at (x, y)+direction patternsAllowed[direction][x, y, i] times.
 
 const directions = [(1, 0), (0, 1), (-1, 0), (0, -1)]
+const opposite = Dict((1,0) => (-1,0), (0,1) => (0, -1), (-1, 0) => (1, 0), (0, -1) => (0, 1))
 
 function get_image(field_patterns; average_superpositions=false)
     output_patterns = map(field_patterns) do pattern_ids
@@ -43,7 +46,7 @@ function load(;
     global patternToId = Dict()
     global idToPattern = Dict()
     global patternCount = Dict()
-    global patternAdjacency = Set()
+    global patternAdjacency = Dict()
 
     if seed != 0
         Random.seed!(seed)
@@ -80,33 +83,35 @@ function load(;
         lap2 = idToPattern[p2][(dy==-1 ? 2 : 1):(dy==1 ? end-1 : end), (dx==-1 ? 2 : 1):(dx==1 ? end-1 : end)]
         overlap = lap1 == lap2
         if overlap
-            push!(patternAdjacency, (direction, p1, p2))
+            # TODO: Properly initialize patternAdjacency
+            push!(get!(get!(patternAdjacency, direction, Dict()), p1, Set()), p2)
         end
     end
+    for direction in directions
+        # WARNING: Works only when pattern IDs go from 1 to n.
+        patterns = map(1:length(idToPattern)) do id
+            length(get!(patternAdjacency[direction], id, Set()))
+        end
+        patternsAllowed[direction] = [p for _ in 1:height, _ in 1:width, p in patterns]
     end
-    # for direction in directions, p1 in keys(idToPattern), p2 in keys(idToPattern)
-    #     (dy, dx) = direction
-    #     N = patternsize
-    #     xmin = dx < 0 ? 0 : dx
-    #     xmax = dx < 0 ? dx + N : N
-    #     ymin = dy < 0 ? 0 : dy
-    #     ymax = dy < 0 ? dy + N : N
-    #     overlap = true
-    #     for y in ymin:ymax
-    #         for x in xmin:xmax
-    #             if p1[y, x] != p2[y-dy, x-dx]
-    #                 overlap = false
-    #             end
-    #         end
-    #     end
-    #     if overlap
-    #         push!(patternAdjacency, (direction, p1, p2))
-    #     end
-    # end
-
+    end
 
     begin  # Generate output.
         field_patterns = [Set(keys(idToPattern)) for i in 1:height, j in 1:width]
+        function neighbors(idx)
+            ((idx+CartesianIndex(direction), direction) for direction in directions if checkbounds(Bool, field_patterns, idx+CartesianIndex(direction)))
+        end
+        function disallowPattern(field_idx, pattern_id)
+            for (neighbor, direction) in neighbors(field_idx)
+                # TODO: This line should be unnecessary, because pattern_id should already be removed from field_idx.
+                (y, x) = Tuple(field_idx)
+                (neighbor_y, neighbor_x) = Tuple(neighbor)
+                patternsAllowed[direction][y, x, pattern_id] = 0
+                for adj_pattern_id in patternAdjacency[direction][pattern_id]
+                    patternsAllowed[opposite[direction]][neighbor_y, neighbor_x, adj_pattern_id] -= 1
+                end
+            end
+        end
         while !all(x -> length(x) == 1, field_patterns)
             # print_field_patterns(field_patterns)
             # flush(stdout)
@@ -131,37 +136,36 @@ function load(;
             (_, idx_min) = findmin(field_entropies)
             field = collect(field_patterns[idx_min])
             weights = Weights(getindex.(Ref(patternCount), field))
-            # @show weights
             choice = sample(field, weights)
+            #  Constrain patternsAllowed with the new information.
+            for pattern_id in field
+                if pattern_id == choice continue end
+                disallowPattern(idx_min, pattern_id)
+            end
             field_patterns[idx_min] = Set([choice])
             # println("Choosing pattern $choice")
             # println("finished field selection")
             flush(stdout)
             # Enforce new constraint in all other fields.
             field_idxs = []
-            function neighbors(idx)
-                (idx+CartesianIndex(direction) for direction in directions if checkbounds(Bool, field_patterns, idx+CartesianIndex(direction)))
-            end
-            for neighbor in neighbors(idx_min)
+            for (neighbor, _) in neighbors(idx_min)
                 push!(field_idxs, neighbor)
             end
             while !isempty(field_idxs)
                 field_idx = pop!(field_idxs)
                 constrained_valid_patterns = Set([])
                 for pattern_id in field_patterns[field_idx]
-                    if all(directions) do direction
-                        constraint_idx = field_idx+CartesianIndex(direction)
-                        if !checkbounds(Bool, field_patterns, constraint_idx) return true end
-                        # println("comparing field $field_idx with $constraint_idx")
-                        any(field_patterns[constraint_idx]) do constraint_pattern_id
-                            (direction, pattern_id, constraint_pattern_id) in patternAdjacency
+                    if all(neighbors(field_idx)) do (_, direction)
+                            patternsAllowed[direction][field_idx[1], field_idx[2], pattern_id] > 0
+                            # println("comparing field $field_idx with $constraint_idx")
                         end
-                    end
                         push!(constrained_valid_patterns, pattern_id)
+                    else
+                        disallowPattern(field_idx, pattern_id)
                     end
                 end
                 if length(constrained_valid_patterns) != length(field_patterns[field_idx])
-                    for neighbor in neighbors(field_idx)
+                    for (neighbor, _) in neighbors(field_idx)
                         push!(field_idxs, neighbor)
                     end
                 end
