@@ -9,7 +9,8 @@ function generate(;
     height=16, # Height of output image in number of patterns.
     periodicInput=false,
     periodicOutput=false,
-    seed=0)
+    seed=0,
+    save_to_gif=false)
     
     directions = [(1, 0), (0, 1), (-1, 0), (0, -1)]
     opposite = Dict((1,0) => (-1,0), (0,1) => (0, -1), (-1, 0) => (1, 0), (0, -1) => (0, 1))
@@ -20,11 +21,12 @@ function generate(;
     patternAdjacency = Dict()  # direction => pattern1 => Set([patterns...])
     patternsAllowed = Dict()  # direction => [width x height x patterns]
     #  pattern i at (x, y) overlaps with patterns from the field at (x, y)+direction patternsAllowed[direction][x, y, i] times.
+    images = []
 
     function get_image(field_patterns; average_superpositions=false)
         output_patterns = map(field_patterns) do pattern_ids
             if average_superpositions
-                error("Superposition averaging not implemented!")
+                pattern = sum(getindex.(Ref(idToPattern), collect(pattern_ids)))[1] / length(pattern_ids)
             else
                 pattern = length(pattern_ids) == 1 ? idToPattern[first(pattern_ids)] : zero(idToPattern[first(pattern_ids)])
                 fill(pattern[1], 1, 1)
@@ -148,7 +150,11 @@ function generate(;
                 end
                 field_patterns[field_idx] = constrained_valid_patterns
             end
+            push!(images, get_image(field_patterns, average_superpositions=true))
         end
+    end
+    if save_to_gif
+        save("output.gif", cat(images..., dims=[3]), fps=10)
     end
     get_image(field_patterns)
 end
