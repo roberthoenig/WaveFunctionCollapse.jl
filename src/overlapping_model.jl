@@ -1,6 +1,25 @@
 using FileIO
 using Random
 using StatsBase
+using FFTViews
+using Images
+
+export generate
+
+PeriodicArray = FFTView
+# Overwrite FFTViews method to use 1-based indexing.
+FFTViews.indrange(i) = FFTViews.URange(first(i), last(i))
+FFTViews._reindex(::Type{FFTView}, ind, i) = FFTViews.modrange(i, ind)
+
+function Base.similar(A::AbstractArray, T::Type, shape::Tuple{FFTViews.FFTVRange,Vararg{FFTViews.FFTVRange}})
+    all(x->first(x)==1, shape) || throw(BoundsError("cannot allocate FFTView with the first element of the range non-zero"))
+    FFTViews.FFTView(similar(A, T, map(length, shape)))
+end
+
+function Base.similar(f::Union{Function,Type}, shape::Tuple{FFTViews.FFTVRange,Vararg{FFTViews.FFTVRange}})
+    all(x->first(x)==1, shape) || throw(BoundsError("cannot allocate FFTView with the first element of the range non-zero"))
+    FFTViews.FFTView(similar(f, map(length, shape)))
+end
 
 function generate(;
     filename,
@@ -78,11 +97,17 @@ function generate(;
             length(get!(patternAdjacency[direction], id, Set()))
         end
         patternsAllowed[direction] = [p for _ in 1:height, _ in 1:width, p in patterns]
+        if periodicOutput
+            patternsAllowed[direction] = PeriodicArray(patternsAllowed[direction])
+        end
     end
     end
 
     begin  # Generate output.
         field_patterns = [Set(keys(idToPattern)) for i in 1:height, j in 1:width]
+        if periodicOutput
+            field_patterns = PeriodicArray(field_patterns)
+        end
         function neighbors(idx)
             ((idx+CartesianIndex(direction), direction) for direction in directions if checkbounds(Bool, field_patterns, idx+CartesianIndex(direction)))
         end
@@ -98,9 +123,6 @@ function generate(;
             end
         end
         while !all(x -> length(x) == 1, field_patterns)
-            if any(x -> length(x) == 0, field_patterns)
-                error("Impossible to complete generation. Restart the algorithm.")
-            end
             # Find field with lowest entropy in field_patterns.
             weight_sum = sum(field_patterns) do valid_patterns
                 sum(id -> patternCount[id], valid_patterns)
@@ -127,10 +149,7 @@ function generate(;
             field_patterns[idx_min] = Set([choice])
             flush(stdout)
             # Enforce new constraint in all other fields.
-            field_idxs = []
-            for (neighbor, _) in neighbors(idx_min)
-                push!(field_idxs, neighbor)
-            end
+            field_idxs = [neighbor for (neighbor, _) in neighbors(idx_min)]
             while !isempty(field_idxs)
                 field_idx = pop!(field_idxs)
                 constrained_valid_patterns = Set([])
@@ -149,6 +168,9 @@ function generate(;
                     end
                 end
                 field_patterns[field_idx] = constrained_valid_patterns
+            end
+            if any(x -> length(x) == 0, field_patterns)
+                error("Impossible to complete generation. Restart the algorithm.")
             end
             push!(images, get_image(field_patterns, average_superpositions=true))
         end
