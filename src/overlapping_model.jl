@@ -66,8 +66,12 @@ function generate(;
     global input = FileIO.load(filename)
     input = convert(Array{RGB{Float32}, 2}, input)
     (input_height, input_width) = size(input)
-    # TODO: Account for periodicInput.
-    for col in 1:input_width+1-patternsize, row in 1:input_height+1-patternsize
+    bound = patternsize-1
+    if periodicInput
+        input = PeriodicArray(input)
+        bound = 0
+    end
+    for col in 1:input_width-bound, row in 1:input_height-bound
         pattern = input[row:row+patternsize-1, col:col+patternsize-1]
         if pattern in keys(patternToId)
             patternCount[patternToId[pattern]] += 1
