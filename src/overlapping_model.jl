@@ -67,62 +67,62 @@ function generate(;
     end
 
     begin  # Generate patterns.
-    global input = FileIO.load(filename)
-    input = convert(Array{RGB{Float32}, 2}, input)
-    (input_height, input_width) = size(input)
-    bound = patternsize-1
-    if periodicInput
-        input = PeriodicArray(input)
-        bound = 0
-    end
-    for col in 1:input_width-bound, row in 1:input_height-bound
-        patternVariations = [input[row:row+patternsize-1, col:col+patternsize-1]]
-        if mirrorInputHorizontally
-            append!(patternVariations, map(p -> p[1:end, end:-1:1], patternVariations))
+        global input = FileIO.load(filename)
+        input = convert(Array{RGB{Float32}, 2}, input)
+        (input_height, input_width) = size(input)
+        bound = patternsize-1
+        if periodicInput
+            input = PeriodicArray(input)
+            bound = 0
         end
-        if mirrorInputVertically
-            append!(patternVariations, map(p -> p[end:-1:1, 1:end], patternVariations))
-        end
-        if rotateInputClockwise
-            append!(patternVariations, map(rotr90, patternVariations))
-        end
-        if rotateInputAnticlockwise
-            append!(patternVariations, map(rotl90, patternVariations))
-        end
-        for pattern in patternVariations
-            if pattern in keys(patternToId)
-                patternCount[patternToId[pattern]] += 1
-            else
-                newid = length(idToPattern) + 1
-                idToPattern[newid] = pattern
-                patternToId[pattern] = newid
-                patternCount[newid] = 1
+        for col in 1:input_width-bound, row in 1:input_height-bound
+            patternVariations = [input[row:row+patternsize-1, col:col+patternsize-1]]
+            if mirrorInputHorizontally
+                append!(patternVariations, map(p -> p[1:end, end:-1:1], patternVariations))
+            end
+            if mirrorInputVertically
+                append!(patternVariations, map(p -> p[end:-1:1, 1:end], patternVariations))
+            end
+            if rotateInputClockwise
+                append!(patternVariations, map(rotr90, patternVariations))
+            end
+            if rotateInputAnticlockwise
+                append!(patternVariations, map(rotl90, patternVariations))
+            end
+            for pattern in patternVariations
+                if pattern in keys(patternToId)
+                    patternCount[patternToId[pattern]] += 1
+                else
+                    newid = length(idToPattern) + 1
+                    idToPattern[newid] = pattern
+                    patternToId[pattern] = newid
+                    patternCount[newid] = 1
+                end
             end
         end
     end
-    end
 
     begin  # Initialize patternAdjacency.
-    for direction in directions, p1 in keys(idToPattern), p2 in keys(idToPattern)
-        (dy, dx) = direction
-        lap1 = idToPattern[p1][(dy==1 ? 2 : 1):(dy==-1 ? end-1 : end), (dx==1 ? 2 : 1):(dx==-1 ? end-1 : end)]
-        lap2 = idToPattern[p2][(dy==-1 ? 2 : 1):(dy==1 ? end-1 : end), (dx==-1 ? 2 : 1):(dx==1 ? end-1 : end)]
-        overlap = lap1 == lap2
-        if overlap
-            # TODO: Properly initialize patternAdjacency
-            push!(get!(get!(patternAdjacency, direction, Dict()), p1, Set()), p2)
+        for direction in directions, p1 in keys(idToPattern), p2 in keys(idToPattern)
+            (dy, dx) = direction
+            lap1 = idToPattern[p1][(dy==1 ? 2 : 1):(dy==-1 ? end-1 : end), (dx==1 ? 2 : 1):(dx==-1 ? end-1 : end)]
+            lap2 = idToPattern[p2][(dy==-1 ? 2 : 1):(dy==1 ? end-1 : end), (dx==-1 ? 2 : 1):(dx==1 ? end-1 : end)]
+            overlap = lap1 == lap2
+            if overlap
+                # TODO: Properly initialize patternAdjacency
+                push!(get!(get!(patternAdjacency, direction, Dict()), p1, Set()), p2)
+            end
         end
-    end
-    for direction in directions
-        # WARNING: Works only when pattern IDs go from 1 to n.
-        patterns = map(1:length(idToPattern)) do id
-            length(get!(patternAdjacency[direction], id, Set()))
+        for direction in directions
+            # WARNING: Works only when pattern IDs go from 1 to n.
+            patterns = map(1:length(idToPattern)) do id
+                length(get!(patternAdjacency[direction], id, Set()))
+            end
+            patternsAllowed[direction] = [p for _ in 1:height, _ in 1:width, p in patterns]
+            if periodicOutput
+                patternsAllowed[direction] = PeriodicArray(patternsAllowed[direction])
+            end
         end
-        patternsAllowed[direction] = [p for _ in 1:height, _ in 1:width, p in patterns]
-        if periodicOutput
-            patternsAllowed[direction] = PeriodicArray(patternsAllowed[direction])
-        end
-    end
     end
 
     begin  # Generate output.
