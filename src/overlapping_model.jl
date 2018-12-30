@@ -28,6 +28,10 @@ function generate(;
     height=16, # Height of output image in number of patterns.
     periodicInput=false,
     periodicOutput=false,
+    mirrorInputHorizontally=false,
+    mirrorInputVertically=false,
+    rotateInputClockwise=false,
+    rotateInputAnticlockwise=false,
     seed=0,
     save_to_gif=false)
     
@@ -72,14 +76,28 @@ function generate(;
         bound = 0
     end
     for col in 1:input_width-bound, row in 1:input_height-bound
-        pattern = input[row:row+patternsize-1, col:col+patternsize-1]
-        if pattern in keys(patternToId)
-            patternCount[patternToId[pattern]] += 1
-        else
-            newid = length(idToPattern) + 1
-            idToPattern[newid] = pattern
-            patternToId[pattern] = newid
-            patternCount[newid] = 1
+        patternVariations = [input[row:row+patternsize-1, col:col+patternsize-1]]
+        if mirrorInputHorizontally
+            append!(patternVariations, map(p -> p[1:end, end:-1:1], patternVariations))
+        end
+        if mirrorInputVertically
+            append!(patternVariations, map(p -> p[end:-1:1, 1:end], patternVariations))
+        end
+        if rotateInputClockwise
+            append!(patternVariations, map(rotr90, patternVariations))
+        end
+        if rotateInputAnticlockwise
+            append!(patternVariations, map(rotl90, patternVariations))
+        end
+        for pattern in patternVariations
+            if pattern in keys(patternToId)
+                patternCount[patternToId[pattern]] += 1
+            else
+                newid = length(idToPattern) + 1
+                idToPattern[newid] = pattern
+                patternToId[pattern] = newid
+                patternCount[newid] = 1
+            end
         end
     end
     end
