@@ -44,8 +44,28 @@ function disallowPattern(field_idx, pattern_id, field_patterns, pattern_adjacenc
         patterns_allowed[opposite[direction]][Tuple(neighbor)..., adj_pattern_id] -= 1
     end
 end
-function collapseField(collapse_field_idx, chosen_pattern_id, field_patterns, pattern_adjacency, patterns_allowed, fast)
+
+function expandFrontier(field_idx, field_patterns, frontier)
+    offset = 3
+    min_row = field_idx[1]-offset
+    max_row = field_idx[1]+offset
+    min_col = field_idx[2]-offset
+    max_col = field_idx[2]+offset
+    surrounding_fields = [CartesianIndex(row, col) for (row, col) in Iterators.product(min_row:max_row, min_col:max_col)]
+    surrounding_fields = filter(f -> checkbounds(Bool, field_patterns, f), surrounding_fields)
+    for field in surrounding_fields
+        if length(field_patterns[field]) > 1
+            push!(frontier, field)
+        end
+    end
+    delete!(frontier, field_idx)
+end
+
+function collapseField(collapse_field_idx, chosen_pattern_id, field_patterns, pattern_adjacency, patterns_allowed, fast, frontier)
     #  Constrain patterns_allowed with the new information.
+    if fast
+        expandFrontier(collapse_field_idx, field_patterns, frontier)
+    end
     field = collect(field_patterns[collapse_field_idx])
     for pattern_id in field
         if pattern_id == chosen_pattern_id continue end
@@ -68,23 +88,15 @@ function collapseField(collapse_field_idx, chosen_pattern_id, field_patterns, pa
         end
         if length(constrained_valid_patterns) != length(field_patterns[field_idx])
             for (neighbor, _) in getNeighbors(field_idx, field_patterns)
-                if fast
-                    offset = 3
-                    min_row = neighbor[1]-offset
-                    max_row = neighbor[1]+offset
-                    min_col = neighbor[2]-offset
-                    max_col = neighbor[2]+offset
-                    surrounding_fields = [CartesianIndex(row, col) for (row, col) in Iterators.product(min_row:max_row, min_col:max_col)]
-                    surrounding_fields = filter(f -> checkbounds(Bool, field_patterns, f), surrounding_fields)
-                    if any(field -> length(field_patterns[field]) == 1, surrounding_fields)
-                        push!(field_idxs, neighbor)
-                    end
-                else
+                if (!fast) || (neighbor in frontier)
                     push!(field_idxs, neighbor)
                 end
             end
         end
         field_patterns[field_idx] = constrained_valid_patterns
+        if fast && length(field_patterns[field_idx]) == 1
+            expandFrontier(field_idx, field_patterns, frontier)
+        end
     end
 end
 
@@ -119,11 +131,11 @@ calling the algorithm with the same seed will generate the same output image, pr
 parameters are identical. If `save_to_gif` is true, the generation process gets animated and saved
 as "output.gif".
 
-If `fast` is true, an experimental version of the algorithm is used. In practice, it works only for
-small- to medium-sized outputs (up to 25x25) and is ~ 2.5 times as fast. The experimental algorithm
-is almost like the normal algorithm, but it doesn't propagate pattern constraints through all fields.
-Instead, it limits the propagation to a frontier around already collapsed fields. That frontier is
-currently 3 fields thick, but that value is subject to experimentation.
+If `fast` is true, an experimental version of the algorithm is used. In practice, it is ~ 2.3 times as fast,
+but may lead to slightly more failed generation attempts. The experimental algorithm is almost like the
+normal algorithm, but it doesn't propagate pattern constraints through all fields. Instead, it limits
+the propagation to a frontier around already collapsed fields. That frontier is currently 3 fields thick,
+but that value is subject to experimentation.
 
 # Examples
 ```
@@ -158,6 +170,7 @@ function generate(;
     id_to_pattern = Dict()
     pattern_count = Dict()
     images = []
+    frontier = Set()
 
      # direction => pattern1 => Set([patterns...])
     pattern_adjacency = Dict()
@@ -237,7 +250,7 @@ function generate(;
         field_patterns = PeriodicArray(field_patterns)
     end
     if ground_pattern_id != nothing
-        collapseField(CartesianIndex(height, 1), ground_pattern_id, field_patterns, pattern_adjacency, patterns_allowed, fast)
+        collapseField(CartesianIndex(height, 1), ground_pattern_id, field_patterns, pattern_adjacency, patterns_allowed, fast, frontier)
         if any(x -> length(x) == 0, field_patterns)
             error("Impossible to initialize bottom row with ground. Try another ground.")
         end
@@ -260,7 +273,7 @@ function generate(;
         (_, idx_min) = findmin(field_entropies)
         field = collect(field_patterns[idx_min])
         choice = sample(field, Weights(getindex.(Ref(pattern_count), field)))
-        collapseField(idx_min, choice, field_patterns, pattern_adjacency, patterns_allowed, fast)
+        collapseField(idx_min, choice, field_patterns, pattern_adjacency, patterns_allowed, fast, frontier)
         if any(x -> length(x) == 0, field_patterns)
             error("Impossible to complete generation. Restart the algorithm.")
         end
