@@ -32,6 +32,7 @@ function generate(;
     mirrorInputVertically=false,
     rotateInputClockwise=false,
     rotateInputAnticlockwise=false,
+    ground=nothing,  # If a tuple (y, x), collapse the left bottom field of the output to the input pattern with the upper left corner at (y, x).
     seed=0,
     save_to_gif=false)
     
@@ -49,10 +50,10 @@ function generate(;
     function get_image(field_patterns; average_superpositions=false)
         output_patterns = map(field_patterns) do pattern_ids
             if average_superpositions
-                pattern = sum(getindex.(Ref(idToPattern), collect(pattern_ids)))[1] / length(pattern_ids)
+                pattern = sum(getindex.(Ref(idToPattern), collect(pattern_ids)))[end, 1] / length(pattern_ids)
             else
                 pattern = length(pattern_ids) == 1 ? idToPattern[first(pattern_ids)] : zero(idToPattern[first(pattern_ids)])
-                fill(pattern[1], 1, 1)
+                fill(pattern[end, 1], 1, 1)
             end
         end
         vcat([hcat(output_patterns[row, :]...) for row in 1:size(output_patterns)[1]]...)
@@ -75,6 +76,7 @@ function generate(;
             input = PeriodicArray(input)
             bound = 0
         end
+        ground_pattern_id = nothing
         for col in 1:input_width-bound, row in 1:input_height-bound
             patternVariations = [input[row:row+patternsize-1, col:col+patternsize-1]]
             if mirrorInputHorizontally
@@ -98,6 +100,10 @@ function generate(;
                     patternToId[pattern] = newid
                     patternCount[newid] = 1
                 end
+            end
+            if (row, col) == ground
+                ground_pattern_id = patternToId[patternVariations[1]]
+                println("Ground:"); flush(stdout); display(idToPattern[ground_pattern_id])
             end
         end
     end
@@ -144,32 +150,14 @@ function generate(;
                 end
             end
         end
-        while !all(x -> length(x) == 1, field_patterns)
-            # Find field with lowest entropy in field_patterns.
-            weight_sum = sum(field_patterns) do valid_patterns
-                sum(id -> patternCount[id], valid_patterns)
-            end
-            field_entropies = map(field_patterns) do valid_patterns
-                # Ignore already collapsed fields.
-                if length(valid_patterns) <= 1
-                    return 10e9
-                end
-                randn()*1e-6 - sum(valid_patterns) do id
-                    weight = patternCount[id]
-                    weight * log(weight/weight_sum)
-                end
-            end
-            (_, idx_min) = findmin(field_entropies)
-            field = collect(field_patterns[idx_min])
-            weights = Weights(getindex.(Ref(patternCount), field))
-            choice = sample(field, weights)
+        function collapseField(idx_min, choice)
             #  Constrain patternsAllowed with the new information.
+            field = collect(field_patterns[idx_min])
             for pattern_id in field
                 if pattern_id == choice continue end
                 disallowPattern(idx_min, pattern_id)
             end
             field_patterns[idx_min] = Set([choice])
-            flush(stdout)
             # Enforce new constraint in all other fields.
             field_idxs = [neighbor for (neighbor, _) in neighbors(idx_min)]
             while !isempty(field_idxs)
@@ -191,6 +179,33 @@ function generate(;
                 end
                 field_patterns[field_idx] = constrained_valid_patterns
             end
+        end
+        if ground_pattern_id != nothing
+            collapseField(CartesianIndex(height, 1), ground_pattern_id)
+            if any(x -> length(x) == 0, field_patterns)
+                error("Impossible to initialize bottom row with ground. Try another ground.")
+            end
+        end
+        while !all(x -> length(x) == 1, field_patterns)
+            # Find field with lowest entropy in field_patterns.
+            weight_sum = sum(field_patterns) do valid_patterns
+                sum(id -> patternCount[id], valid_patterns)
+            end
+            field_entropies = map(field_patterns) do valid_patterns
+                # Ignore already collapsed fields.
+                if length(valid_patterns) <= 1
+                    return 10e9
+                end
+                randn()*1e-6 - sum(valid_patterns) do id
+                    weight = patternCount[id]
+                    weight * log(weight/weight_sum)
+                end
+            end
+            (_, idx_min) = findmin(field_entropies)
+            field = collect(field_patterns[idx_min])
+            weights = Weights(getindex.(Ref(patternCount), field))
+            choice = sample(field, weights)
+            collapseField(idx_min, choice)
             if any(x -> length(x) == 0, field_patterns)
                 error("Impossible to complete generation. Restart the algorithm.")
             end
