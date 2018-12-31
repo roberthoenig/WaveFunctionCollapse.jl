@@ -44,7 +44,7 @@ function disallowPattern(field_idx, pattern_id, field_patterns, pattern_adjacenc
         patterns_allowed[opposite[direction]][Tuple(neighbor)..., adj_pattern_id] -= 1
     end
 end
-function collapseField(collapse_field_idx, chosen_pattern_id, field_patterns, pattern_adjacency, patterns_allowed)
+function collapseField(collapse_field_idx, chosen_pattern_id, field_patterns, pattern_adjacency, patterns_allowed, fast)
     #  Constrain patterns_allowed with the new information.
     field = collect(field_patterns[collapse_field_idx])
     for pattern_id in field
@@ -68,7 +68,20 @@ function collapseField(collapse_field_idx, chosen_pattern_id, field_patterns, pa
         end
         if length(constrained_valid_patterns) != length(field_patterns[field_idx])
             for (neighbor, _) in getNeighbors(field_idx, field_patterns)
-                push!(field_idxs, neighbor)
+                if fast
+                    offset = 3
+                    min_row = neighbor[1]-offset
+                    max_row = neighbor[1]+offset
+                    min_col = neighbor[2]-offset
+                    max_col = neighbor[2]+offset
+                    surrounding_fields = [CartesianIndex(row, col) for (row, col) in Iterators.product(min_row:max_row, min_col:max_col)]
+                    surrounding_fields = filter(f -> checkbounds(Bool, field_patterns, f), surrounding_fields)
+                    if any(field -> length(field_patterns[field]) == 1, surrounding_fields)
+                        push!(field_idxs, neighbor)
+                    end
+                else
+                    push!(field_idxs, neighbor)
+                end
             end
         end
         field_patterns[field_idx] = constrained_valid_patterns
@@ -88,7 +101,8 @@ end
            rotate_input_anticlockwise=false,
            ground=nothing,
            seed=0,
-           save_to_gif=false]
+           save_to_gif=false,
+           fast=false]
     )
 
 Apply the WaveFunctionCollapse algorithm to generate an image of dimension `width`*`height`
@@ -104,6 +118,12 @@ can enforce regularity on images with ground rows, like `samples/Flowers.png`. I
 calling the algorithm with the same seed will generate the same output image, provided that the other
 parameters are identical. If `save_to_gif` is true, the generation process gets animated and saved
 as "output.gif".
+
+If `fast` is true, an experimental version of the algorithm is used. In practice, it works only for
+small- to medium-sized outputs (up to 25x25) and is ~ 2.5 times as fast. The experimental algorithm
+is almost like the normal algorithm, but it doesn't propagate pattern constraints through all fields.
+Instead, it limits the propagation to a frontier around already collapsed fields. That frontier is
+currently 3 fields thick, but that value is subject to experimentation.
 
 # Examples
 ```
@@ -130,7 +150,8 @@ function generate(;
     rotate_input_anticlockwise=false,
     ground=nothing,
     seed=0,
-    save_to_gif=false
+    save_to_gif=false,
+    fast=false,
 )
     input = []
     pattern_to_id = Dict()
@@ -216,7 +237,7 @@ function generate(;
         field_patterns = PeriodicArray(field_patterns)
     end
     if ground_pattern_id != nothing
-        collapseField(CartesianIndex(height, 1), ground_pattern_id, field_patterns, pattern_adjacency, patterns_allowed)
+        collapseField(CartesianIndex(height, 1), ground_pattern_id, field_patterns, pattern_adjacency, patterns_allowed, fast)
         if any(x -> length(x) == 0, field_patterns)
             error("Impossible to initialize bottom row with ground. Try another ground.")
         end
@@ -239,7 +260,7 @@ function generate(;
         (_, idx_min) = findmin(field_entropies)
         field = collect(field_patterns[idx_min])
         choice = sample(field, Weights(getindex.(Ref(pattern_count), field)))
-        collapseField(idx_min, choice, field_patterns, pattern_adjacency, patterns_allowed)
+        collapseField(idx_min, choice, field_patterns, pattern_adjacency, patterns_allowed, fast)
         if any(x -> length(x) == 0, field_patterns)
             error("Impossible to complete generation. Restart the algorithm.")
         end
