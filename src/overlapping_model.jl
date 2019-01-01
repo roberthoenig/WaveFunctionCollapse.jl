@@ -2,9 +2,15 @@ using FileIO
 using Random
 using StatsBase
 using FFTViews
-using Images
+using ColorTypes
 
 export generate
+
+# We could just use Images.jl, but Images.jl significantly increases start-up time.
+import Base.+
+import Base./
++(a::RGB{Float32}, b::RGB{Float32}) = RGB{Float32}(a.r+b.r, a.g+b.g, a.b+b.b)
+/(a::RGB{Float32}, b::Int64) = RGB{Float32}(a.r/b, a.g/b, a.b/b)
 
 # Overwrite FFTViews method to use 1-based indexing.
 FFTViews.indrange(i) = FFTViews.URange(first(i), last(i))
