@@ -196,7 +196,7 @@ function generate(
 
     # direction => [width x height x patterns]. Pattern i at (x, y) overlaps with patterns
     # from the field at (x, y)+direction patterns_allowed[direction][x, y, i] times.
-    patterns_allowed = Dict{Tuple{Int64,Int64},Array{Int64,3}}() 
+    patterns_allowed = Dict{Tuple{Int64,Int64},AbstractArray{Int64,3}}() 
 
     if seed != 0
         Random.seed!(seed)
