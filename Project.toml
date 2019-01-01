@@ -1,4 +1,4 @@
-name = "wavefunctioncollapse"
+name = "WaveFunctionCollapse.jl"
 uuid = "26ce0fe4-082e-11e9-3c66-1f94c8deb1aa"
 authors = ["Robert Hönig <robhoenig@gmail.com>"]
 version = "0.1.0"
