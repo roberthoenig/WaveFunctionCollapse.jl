@@ -131,11 +131,11 @@ calling the algorithm with the same seed will generate the same output image, pr
 parameters are identical. If `save_to_gif` is true, the generation process gets animated and saved
 as "output.gif".
 
-If `fast` is true, an experimental version of the algorithm is used. In practice, it is ~ 2.3 times as fast,
-but may lead to slightly more failed generation attempts. The experimental algorithm is almost like the
-normal algorithm, but it doesn't propagate pattern constraints through all fields. Instead, it limits
-the propagation to a frontier around already collapsed fields. That frontier is currently 3 fields thick,
-but that value is subject to experimentation.
+If `fast` is true, an experimental version of the algorithm is used. In practice, it is 2-4 times as fast,
+but may lead to more failed generation attempts when generating big outputs. The experimental algorithm is
+almost like the normal algorithm, but it doesn't propagate pattern constraints through all fields. Instead,
+it limits the propagation to a frontier around already collapsed fields. That frontier is currently 3 fields
+thick, but that value is subject to experimentation.
 
 # Examples
 ```
@@ -165,19 +165,31 @@ function generate(;
     save_to_gif=false,
     fast=false,
 )
+generate(filename, patternsize, width, height, periodic_input,
+    periodic_output, mirror_input_horizontally, mirror_input_vertically,
+    rotate_input_clockwise, rotate_input_anticlockwise, ground, seed,
+    save_to_gif, fast
+)
+end
+
+function generate(filename, patternsize, width, height, periodic_input,
+    periodic_output, mirror_input_horizontally, mirror_input_vertically,
+    rotate_input_clockwise, rotate_input_anticlockwise, ground, seed,
+    save_to_gif, fast,
+)
     input = []
     pattern_to_id = Dict()
     id_to_pattern = Dict()
-    pattern_count = Dict()
+    pattern_count = Dict{Int64, Int64}()
     images = []
-    frontier = Set()
+    frontier = Set{CartesianIndex{2}}()
 
-     # direction => pattern1 => Set([patterns...])
-    pattern_adjacency = Dict()
+     # direction => pattern_id => Set([pattern_ids...])
+    pattern_adjacency = Dict{Tuple{Int64,Int64},Dict{Int64,Set{Int64}}}()
 
     # direction => [width x height x patterns]. Pattern i at (x, y) overlaps with patterns
     # from the field at (x, y)+direction patterns_allowed[direction][x, y, i] times.
-    patterns_allowed = Dict() 
+    patterns_allowed = Dict{Tuple{Int64,Int64},Array{Int64,3}}() 
 
     if seed != 0
         Random.seed!(seed)
@@ -277,7 +289,9 @@ function generate(;
         if any(x -> length(x) == 0, field_patterns)
             error("Impossible to complete generation. Restart the algorithm.")
         end
-        push!(images, getImage(field_patterns, id_to_pattern, average_superpositions=true))
+        if save_to_gif
+            push!(images, getImage(field_patterns, id_to_pattern, average_superpositions=true))
+        end
     end
     if save_to_gif
         save("output.gif", cat(images..., dims=[3]), fps=10)
