@@ -102,7 +102,7 @@ end
 
 """
     generate(filename::String
-        [, patternsize=2,
+        [; patternsize=2,
            width=16,
            height=16,
            periodic_input=false,
@@ -137,6 +137,12 @@ almost like the normal algorithm, but it doesn't propagate pattern constraints t
 it limits the propagation to a frontier around already collapsed fields. That frontier is currently 3 fields
 thick, but that value is subject to experimentation.
 
+    generate(input::Array{<:ColorTypes.RGB,2}
+    [; kwargs...]
+    )
+
+Like `generate(filename [; kwargs...])`, but you can directly pass an array for the input image.
+
 # Examples
 ```
 generate(
@@ -149,8 +155,7 @@ generate(
     seed=726259)
 ```
 """
-function generate(;
-    filename::String,
+function generate(input::Array{<:ColorTypes.RGB,2};
     patternsize=2,
     width=16,
     height=16,
@@ -165,19 +170,21 @@ function generate(;
     save_to_gif=false,
     fast=false,
 )
-generate(filename, patternsize, width, height, periodic_input,
-    periodic_output, mirror_input_horizontally, mirror_input_vertically,
-    rotate_input_clockwise, rotate_input_anticlockwise, ground, seed,
-    save_to_gif, fast
-)
+    generate(input, patternsize, width, height, periodic_input,
+        periodic_output, mirror_input_horizontally, mirror_input_vertically,
+        rotate_input_clockwise, rotate_input_anticlockwise, ground, seed,
+        save_to_gif, fast
+    )
 end
 
-function generate(filename, patternsize, width, height, periodic_input,
-    periodic_output, mirror_input_horizontally, mirror_input_vertically,
-    rotate_input_clockwise, rotate_input_anticlockwise, ground, seed,
-    save_to_gif, fast,
+generate(filename::String; kwargs...) = generate(FileIO.load(filename); kwargs...)
+
+function generate(
+    input::Array{<:ColorTypes.RGB,2}, patternsize, width, height, periodic_input, periodic_output,
+    mirror_input_horizontally, mirror_input_vertically, rotate_input_clockwise,
+    rotate_input_anticlockwise, ground, seed, save_to_gif, fast,
 )
-    input = []
+    input = convert(Array{RGB{Float32}, 2}, input)
     pattern_to_id = Dict()
     id_to_pattern = Dict()
     pattern_count = Dict{Int64, Int64}()
@@ -198,8 +205,6 @@ function generate(filename, patternsize, width, height, periodic_input,
         Random.seed!(newseed)
         println("Seed: $newseed")
     end
-    input = FileIO.load(filename)
-    input = convert(Array{RGB{Float32}, 2}, input)
     bound = patternsize-1
     if periodic_input
         input = PeriodicArray(input)
