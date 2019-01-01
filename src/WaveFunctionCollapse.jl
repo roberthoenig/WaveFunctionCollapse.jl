@@ -1,6 +1,6 @@
 
 module WaveFunctionCollapse
 
-include("load.jl")
+include("overlapping_model.jl")
 
 end
