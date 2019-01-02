@@ -161,10 +161,10 @@ generate(
     seed=726259)
 ```
 """
-function generate(input::Array{<:ColorTypes.RGB,2};
-    patternsize=2,
-    width=16,
-    height=16,
+function generate(input::Array{<:Any,2};
+    patternsize=3,
+    width=20,
+    height=20,
     periodic_input=false,
     periodic_output=false,
     mirror_input_horizontally=false,
@@ -186,7 +186,7 @@ end
 generate(filename::String; kwargs...) = generate(FileIO.load(filename); kwargs...)
 
 function generate(
-    input::Array{<:ColorTypes.RGB,2}, patternsize, width, height, periodic_input, periodic_output,
+    input::Array{<:Any,2}, patternsize, width, height, periodic_input, periodic_output,
     mirror_input_horizontally, mirror_input_vertically, rotate_input_clockwise,
     rotate_input_anticlockwise, ground, seed, save_to_gif, fast,
 )
