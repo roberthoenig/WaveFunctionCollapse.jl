@@ -3,9 +3,7 @@
 WaveFunctionCollapse procedurally generates arbitrarily sized images based
 on a single example image. It is based on https://github.com/mxgmn/WaveFunctionCollapse.
 
-![](docs/Flowers.png =256x256)
-becomes
-![](docs/Flowers.gif =512x512)
+![](docs/Flowers.png) -> ![](docs/Flowers.gif)
 
 ## Installation
 
